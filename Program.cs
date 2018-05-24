@@ -55,7 +55,7 @@ namespace SAPExtractor
     {
         public static void Print(string text)
         {
-            if (text == "<hr>") Console.WriteLine(string.Concat(Enumerable.Repeat('-', 100)));
+            if (text == "<hr>") Console.WriteLine(string.Concat(Enumerable.Repeat('-', 85)));
             else Console.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ff") + ":  " + text);
         }
     }
@@ -66,9 +66,8 @@ namespace SAPExtractor
         public static string user;
         public static string password;
         public static string dbname;
-        static SqlConnection conn;
 
-        public static string State()
+        public static string State(SqlConnection conn)
         {
             if (conn == null) return "Closed";
             if (conn.State == ConnectionState.Open) return "Open";
@@ -79,37 +78,38 @@ namespace SAPExtractor
             if (conn.State == ConnectionState.Connecting) return "Connecting";
             return "Closed";
         }
-        public static bool Connect()
+        public static bool Connect(SqlConnection conn, int thisthreadid = 0)
         {
-            Debug.Print("SQL.Connect");
+            //Debug.Print("SQL.Connect");
             try
             {
-                if (State() == "Closed")
+                if (State(conn) == "Closed")
                 {
-                    conn = new SqlConnection("server=" + host + ";trusted_connection=no;" + "user id=" + user + ";password=" + password + ";database=" + dbname + ";connection timeout=30");
+                    conn.ConnectionString = "server=" + host + ";trusted_connection=no;" + "user id=" + user + ";password=" + password + ";database=" + dbname + ";connection timeout=30";
                     conn.Open();
                 }
             }
             catch (Exception expt)
             {
-                Log.Print("Error connecting to [" + host + "]: " + expt.Message);
+                if (thisthreadid > 0) Log.Print("Error connecting to [" + host + "] in thread #" + thisthreadid.ToString("000") + ": " + expt.Message);
+                else Log.Print("Error connecting to [" + host + "]: " + expt.Message);
                 return false;
             }
             return true;
         }
-        public static bool Close()
+        public static bool Close(SqlConnection conn)
         {
-            Debug.Print("SQL.Close");
-            if (State() != "Closed")
+            //Debug.Print("SQL.Close");
+            if (State(conn) != "Closed")
             {
                 conn.Close();
             }
             return true;
         }
-        public static bool Execute(string sql)
+        public static bool Execute(SqlConnection conn, string sql)
         {
-            Debug.Print("SQL.Execute");
-            if (State() != "Open")
+            //Debug.Print("SQL.Execute");
+            if (State(conn) != "Open")
             {
                 Log.Print("No open connection to [" + host + "]");
                 return false;
@@ -118,13 +118,24 @@ namespace SAPExtractor
             { 
                 SqlCommand cmd = new SqlCommand(sql, conn);
                 cmd.ExecuteNonQuery();
-                conn.Close();
             }
             catch (Exception expt)
             {
                 Log.Print("Error executing CMD on [" + host + "]: " + expt.Message);
                 return false;
             }
+            return true;
+        }
+        public static bool Parse(SqlConnection conn, DataTable result, int thisthreadid = 0)
+        {
+            //Debug.Print(Data.Source.fields[0] + " " + Data.Source.fields[1] + " " + Data.Source.fields[2]);
+            //Debug.Print(result.Rows[0][Data.Source.fields[0]].ToString() + " " + result.Rows[0][Data.Source.fields[1]].ToString() + " " + result.Rows[0][Data.Source.fields[2]].ToString());
+            //Debug.Print(result.Rows[1][Data.Source.fields[0]].ToString() + " " + result.Rows[1][Data.Source.fields[1]].ToString() + " " + result.Rows[1][Data.Source.fields[2]].ToString());
+            Random rnd = new Random();
+            if (result.Rows.Count == 10001) System.Threading.Thread.Sleep(rnd.Next(10000));
+            //Debug.Print("#" + thisthreadid.ToString("000"));
+
+
             return true;
         }
     }
@@ -137,25 +148,29 @@ namespace SAPExtractor
         public static string sysnum;
         public static string language;
         public static string client;
-        static ERPConnect.R3Connection conn;
         static Int32 threadid = 0;
         static Int32 threadcount = 0;
         static Int64 threadrows = 0;
-        public static string State ()
+        static bool threaderror = false;
+        public static string State (ERPConnect.R3Connection conn)
         {
-            if (conn != null) return "Open";
-            if (conn == null) return "Closed";
-            return "Null";
+            if (conn.Ping() && conn.IsOpen) return "Open";
+            return "Closed";
         }
-        public static bool Connect()
+        public static bool Connect(ERPConnect.R3Connection conn)
         {
-            Debug.Print("SAP.Connect");
+            //Debug.Print("SAP.Connect");
             try
             {
-                if (State() == "Closed")
+                if (State(conn) == "Closed")
                 {
                     ERPConnect.LIC.SetLic("826DZD4CY8-17655");
-                    conn = new ERPConnect.R3Connection(SAP.host, Convert.ToInt32(SAP.sysnum), SAP.user, SAP.password, SAP.language, SAP.client);
+                    conn.Host = SAP.host;
+                    conn.SystemNumber = Convert.ToInt32(SAP.sysnum);
+                    conn.UserName = SAP.user;
+                    conn.Password = SAP.password;
+                    conn.Language = SAP.language;
+                    conn.Client = SAP.client;
                     conn.Open();
                 }
             }
@@ -166,20 +181,20 @@ namespace SAPExtractor
             }
             return true;
         }
-        public static bool Close()
+        public static bool Close(ERPConnect.R3Connection conn)
         {
-            Debug.Print("SAP.Close");
-            if (State() != "Closed")
+            //Debug.Print("SAP.Close");
+            if (State(conn) != "Closed")
             {
                 conn.Close();
             }
             conn = null;
             return true;
         }
-        public static bool GetMeta()
+        public static bool GetMeta(ERPConnect.R3Connection conn)
         {
-            Debug.Print("SAP.GetMeta");
-            if (State() != "Open")
+            //Debug.Print("SAP.GetMeta");
+            if (State(conn) != "Open")
             {
                 Log.Print("No open connection to [" + host + "]");
                 return false;
@@ -225,10 +240,10 @@ namespace SAPExtractor
             }
             return true;
         }
-        public static bool Query()
+        public static bool Query(ERPConnect.R3Connection conn)
         {
-            Debug.Print("SAP.Query");
-            if (State() != "Open")
+            //Debug.Print("SAP.Query");
+            if (State(conn) != "Open")
             {
                 Log.Print("No open connection to [" + host + "]");
                 return false;
@@ -250,30 +265,40 @@ namespace SAPExtractor
                 query.RaiseIncomingPackageEvent = true;
                 query.IncomingPackage += new ERPConnect.Utils.ReadTable.OnIncomingPackage(PackageReader);
 
-                Log.Print("Processing chunks of " + Program.packagesize.ToString() + " rows in " + Program.maxthreads.ToString() + " threads");
+                Log.Print("Processing chunks of " + Program.packagesize.ToString() + " rows in up to " + Program.maxthreads.ToString() + " parallel threads");
                 lock ("ThreadCount") threadcount++;
                 query.Run();
                 lock ("ThreadCount") threadcount--;
-                while (threadcount > 0) Thread.Sleep(1000);
+
+                while (threadcount > 0) System.Threading.Thread.Sleep(1000);
+
                 Log.Print("Extraction of " + threadrows + " rows completed");
             }
             catch (Exception expt)
             {
-                Log.Print("Error executing CMD on [" + host + "]: " + expt.Message);
+                if (!threaderror) Log.Print("Error executing CMD on [" + host + "]: " + expt.Message);
                 return false;
             }
             return true;
         }
         private static void PackageReader(ERPConnect.Utils.ReadTable sender, DataTable result)
         {
-            if (result.Rows.Count > 0)
+            if (result.Rows.Count > 0 && !threaderror)
             {
-                lock ("ThreadCount")
+                ThreadError(false, 0);
+                lock ("ThreadCount") threadcount++;
+                try
                 {
-                    threadcount++;
                     ThreadPool.QueueUserWorkItem(new WaitCallback(PackageThread), result.Copy());
                 }
+                catch (Exception expt)
+                {
+                    Log.Print("Error preparing thread: " + expt.Message);
+                    lock ("ThreadCount") threadcount--;
+                    ThreadError(true, 0);
+                }
             }
+            if (threaderror) sender.Connection.Close();
         }
         private static void PackageThread(object datatable)
         {
@@ -284,23 +309,37 @@ namespace SAPExtractor
                 thisthreadid = threadid;
             }
             DataTable result = (DataTable)datatable;
-            Log.Print("Starting thread #" + thisthreadid.ToString("000") + " with " + result.Rows.Count + " Rows");
+            SqlConnection sql_conn = new SqlConnection();
 
-
-
-
+            if (!threaderror) Log.Print("Starting thread #" + thisthreadid.ToString("000") + " with " + result.Rows.Count + " rows");
+            for (int i = 0; i < Data.Source.fields.Count(); i++)
+            {
+                //
+                Debug.Print(Data.Source.fields[i] + " as " + Data.Source.datatypes[Data.Source.fields[i]] + "(" + Data.Source.datalengths[Data.Source.fields[i]] + ")  is  " + result.Columns[i].DataType.ToString() + "  Data:" + result.Rows[99][i]);
+            }
             
 
-
-            //Debug.Print(Data.Source.fields[0] + " " + Data.Source.fields[1] + " " + Data.Source.fields[2]);
-            //Debug.Print(result.Rows[0][Data.Source.fields[0]].ToString() + " " + result.Rows[0][Data.Source.fields[1]].ToString() + " " + result.Rows[0][Data.Source.fields[2]].ToString());
-            //Debug.Print(result.Rows[1][Data.Source.fields[0]].ToString() + " " + result.Rows[1][Data.Source.fields[1]].ToString() + " " + result.Rows[1][Data.Source.fields[2]].ToString());
-
+            if (!threaderror) ThreadError(!SQL.Connect(sql_conn, thisthreadid), thisthreadid);            
+            if (!threaderror) ThreadError(!SQL.Parse(sql_conn, result, thisthreadid), thisthreadid);
+            if (!threaderror) ThreadError(!SQL.Close(sql_conn), thisthreadid);
+            //if (!threaderror) Debug.Print("Finished thread #" + thisthreadid.ToString("000"));
 
             lock ("ThreadCount")
             {
                 threadrows += result.Rows.Count;
                 threadcount--;
+            }
+        }
+        private static string Convert4sql(string value, string datatype)
+        {
+            return datatype;
+        }
+        private static void ThreadError(bool error = true, int thisthreadid = 0)
+        {
+            if (error)
+            {
+                lock ("ThreadError") threaderror = true;
+                if (thisthreadid > 0) Log.Print("Error within thread #" + thisthreadid.ToString("000") + " detected - Terminating running query");
             }
         }
     }
@@ -321,7 +360,6 @@ namespace SAPExtractor
             var file = System.IO.File.OpenRead(path);
             return BitConverter.ToString(md5.ComputeHash(file)).Replace("-", "").ToLower();
         }
-
         static string GetXmlNode(XmlElement xml, string path, string nullval = null)
         {
             XmlNode node = xml.SelectSingleNode(path);
@@ -343,9 +381,9 @@ namespace SAPExtractor
                 return node.InnerText;
             }
         }
-
         static bool ReadConfigFile()
         {
+            //Debug.Print("Program.ReadConfigFile");
             noerror = true;
             string path = workdir + @"\SAPExtractor.xml";
             try
@@ -378,9 +416,9 @@ namespace SAPExtractor
             }
             return noerror;
         }
-
         static bool ReadProfileFile()
         {
+            //Debug.Print("Program.ReadProfileFile");
             noerror = true;
             string path = workdir + @"\Profiles\" + profile + ".xml";
             try
@@ -392,7 +430,9 @@ namespace SAPExtractor
                 XmlElement xml = xmldoc.DocumentElement;
 
                 Data.Source.table = GetXmlNode(xml, "/profile/source/table").ToUpper();
-                Data.Source.fields = GetXmlNode(xml, "/profile/source/fields").ToUpper().Replace(" ", "").Split(',').Distinct().ToArray();
+                //Data.Source.fields = GetXmlNode(xml, "/profile/source/fields").ToUpper().Replace(" ", "").Split(',').Distinct().ToArray();
+                Data.Source.fields = GetXmlNode(xml, "/profile/source/fields").ToUpper().Split(',').Distinct().ToArray();
+                for (int i = 0; i < Data.Source.fields.Count(); i++) Data.Source.fields[i] = Data.Source.fields[i].Trim();
                 Data.Source.filter = GetXmlNode(xml, "/profile/source/filter");
                 Data.Source.module = GetXmlNode(xml, "/profile/source/module", "Z_XTRACT_IS_TABLE").ToUpper();
                 Data.Destination.mode = GetXmlNode(xml, "/profile/destination/mode", "append");
@@ -406,24 +446,40 @@ namespace SAPExtractor
             }
             return noerror;
         }
-
+        static bool PrepareExtraction(SqlConnection conn)
+        {
+            Log.Print("Preparing Extraction");
+            try
+            {
+                SqlConnection sql_conn = new SqlConnection();
+                Exit(!SQL.Connect(sql_conn));
+                Exit(!SQL.Execute(conn, "BEGIN TRY DROP TABLE " + Data.Destination.dbname + ".dbo.temp_extract_" + Data.Destination.table + " END TRY BEGIN CATCH END CATCH"));
+                Exit(!SQL.Close(sql_conn));                
+            }
+            catch (Exception expt)
+            {
+                Log.Print("Error preparing Extraction: " + expt.Message);
+                return false;
+            }
+            return true;
+        }
         static void Run()
         {
+
             Exit(!ReadConfigFile());
             Exit(!ReadProfileFile());
 
-            Exit(!SQL.Connect());
-            Exit(!SQL.Execute("BEGIN TRY DROP TABLE " + Data.Destination.dbname + ".dbo.temp_extract_" + Data.Destination.table + " END TRY BEGIN CATCH END CATCH"));
-            Exit(!SQL.Close());
 
-            Exit(!SAP.Connect());
-            Exit(!SAP.GetMeta());
-            Exit(!SAP.Query());
-            Exit(!SAP.Close());
+
+            ERPConnect.R3Connection sap_conn = new ERPConnect.R3Connection();
+            Exit(!SAP.Close(sap_conn));
+            Exit(!SAP.Connect(sap_conn));
+            Exit(!SAP.GetMeta(sap_conn));
+            Exit(!SAP.Query(sap_conn));
+            Exit(!SAP.Close(sap_conn));
 
             Debug.Run();
         }
-
         static void Main(string[] args)
         {
             if (args.GetLength(0) == 0)
@@ -444,14 +500,15 @@ namespace SAPExtractor
                 runid = startdate.ToString("yyyyMMddHHmmssff");
             }
             Log.Print("<hr>");
-            Log.Print("STARTING - Profile: [" + profile + "] - RunID: [" + runid + "] - PID: [" + System.Diagnostics.Process.GetCurrentProcess().Id + "]");
+            Log.Print("STARTING - Profile:[" + profile + "] - RunID:[" + runid + "] - PID:[" + System.Diagnostics.Process.GetCurrentProcess().Id + "]");
             Run();
-            Log.Print("FINISHED - Profile: [" + profile + "] - RunID: [" + runid + "] - PID: [" + System.Diagnostics.Process.GetCurrentProcess().Id + "]");
+            TimeSpan runtime = DateTime.Now - startdate;
+            Log.Print("FINISHED - Profile:[" + profile + "] - RunID:[" + runid + "] - Duration:[" + Math.Floor(runtime.TotalHours).ToString("##00") + ":" + runtime.Minutes.ToString("00") + ":" + runtime.Seconds.ToString("00") + "]");
             Log.Print("<hr>");
 
             Debug.End();
         }
-        static void Exit(bool exit = true)
+        private static void Exit(bool exit = true)
         {
             if (exit)
             {
