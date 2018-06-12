@@ -140,6 +140,96 @@ namespace SAPExtractor
         }
     }
 
+    class DB2
+    {
+        public static string host;
+        public static string user;
+        public static string password;
+        public static string dbname;
+        public static string alias;
+        public static string schema;
+        public static string port;
+        public static string State(IBM.Data.DB2.DB2Connection conn)
+        {
+            if (conn == null) return "Closed";
+            if (conn.State == ConnectionState.Open) return "Open";
+            if (conn.State == ConnectionState.Closed) return "Closed";
+            if (conn.State == ConnectionState.Broken) return "Broken";
+            if (conn.State == ConnectionState.Fetching) return "Fetching";
+            if (conn.State == ConnectionState.Executing) return "Executing";
+            if (conn.State == ConnectionState.Connecting) return "Connecting";
+            return "Closed";
+        }
+        public static bool Connect(IBM.Data.DB2.DB2Connection conn, int thisthreadid = 0)
+        {
+            Debug.Print("DB2.Connect");
+            host = "sasapegl001";
+            user = "DB2PEG";
+            password = "xxxxxxxxx";
+            dbname = "PEG";
+            alias = "SAPDB";
+            schema = "SAPSR3";
+            port = "40000";
+
+            //db2cli writecfg add -database PEG -host sasapegl001 -port 40000
+            //db2cli writecfg add -dsn SAPDB2 -database PEG -host sasapegl001 -port 40000
+            //db2cli writecfg remove -database PEG
+            //db2cli writecfg remove -dsn SAPDB2
+            //Debug.Print("DB2.DB2CLI");
+            //Debug.Print(@"db2cli writecfg remove -database " + dbname + " -host " + host + " -port " + port);
+            //Debug.Print(@"db2cli writecfg remove -dsn " + alias + " -database " + dbname + " -host " + host + " -port " + port);
+            //Debug.Print(@"db2cli writecfg add -database " + dbname + " -host " + host + " -port " + port);
+            //Debug.Print(@"db2cli writecfg add -dsn " + alias + " -database " + dbname + " -host " + host + " -port " + port);
+            //exeProcess = System.Diagnostics.Process.Start(@"C:\Program Files\IBM\IBM DATA SERVER DRIVER\bin\db2cli", @"writecfg remove -dsn " + alias );
+            //exeProcess.WaitForExit();
+
+            try
+            {
+                if (State(conn) == "Closed")
+                {
+                    conn.ConnectionString = "Server=" + host + ":" + port + ";UID=" + user + ";PWD=" + password + ";Database=" + dbname + ";CurrentSchema=" + schema + ";";
+                    conn.Open();
+                }
+            }
+            catch (Exception expt)
+            {
+                if (thisthreadid > 0) Log.Print("Error connecting to [" + host + "] in thread #" + thisthreadid.ToString("000") + ": " + expt.Message);
+                else Log.Print("Error connecting to [" + host + "]: " + expt.Message);
+                return false;
+            }
+            return true;
+        }
+        public static bool Close(IBM.Data.DB2.DB2Connection conn)
+        {
+            Debug.Print("DB2.Close");
+            if (State(conn) != "Closed")
+            {
+                conn.Close();
+            }
+            return true;
+        }
+        public static bool Execute(IBM.Data.DB2.DB2Connection conn, string sql)
+        {
+            Debug.Print("DB2.Execute");
+            if (State(conn) != "Open")
+            {
+                Log.Print("No open connection to [" + host + "]");
+                return false;
+            }
+            try
+            {
+                IBM.Data.DB2.DB2Command cmd = new IBM.Data.DB2.DB2Command(sql, conn);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception expt)
+            {
+                Log.Print("Error executing CMD on [" + host + "]: " + expt.Message);
+                return false;
+            }
+            return true;
+        }
+    }
+
     class SAP
     {
         public static string host;
@@ -430,7 +520,6 @@ namespace SAPExtractor
                 XmlElement xml = xmldoc.DocumentElement;
 
                 Data.Source.table = GetXmlNode(xml, "/profile/source/table").ToUpper();
-                //Data.Source.fields = GetXmlNode(xml, "/profile/source/fields").ToUpper().Replace(" ", "").Split(',').Distinct().ToArray();
                 Data.Source.fields = GetXmlNode(xml, "/profile/source/fields").ToUpper().Split(',').Distinct().ToArray();
                 for (int i = 0; i < Data.Source.fields.Count(); i++) Data.Source.fields[i] = Data.Source.fields[i].Trim();
                 Data.Source.filter = GetXmlNode(xml, "/profile/source/filter");
@@ -469,7 +558,10 @@ namespace SAPExtractor
             Exit(!ReadConfigFile());
             Exit(!ReadProfileFile());
 
-
+            //IBM.Data.DB2.DB2Connection db2_conn = new IBM.Data.DB2.DB2Connection();
+            //Exit(!DB2.Close(db2_conn));
+            //Exit(!DB2.Connect(db2_conn));
+            //Exit(!DB2.Close(db2_conn));
 
             ERPConnect.R3Connection sap_conn = new ERPConnect.R3Connection();
             Exit(!SAP.Close(sap_conn));
