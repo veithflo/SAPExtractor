@@ -21,6 +21,7 @@ namespace SAPExtractor
             Console.WriteLine("");
             Console.WriteLine("Press any Key to close ...");
             Console.ReadKey();
+            while (true) Thread.Sleep(5000);
 #endif
         }
         public static void Print(string text)
@@ -39,9 +40,11 @@ namespace SAPExtractor
             public static string filter;
             public static string module;
             public static string[] fields;
+            public static string sql;
             public static Dictionary<string, string> datatypes = new Dictionary<string, string>();
             public static Dictionary<string, string> datalengths = new Dictionary<string, string>();
             public static Dictionary<string, string> decimals = new Dictionary<string, string>();
+            public static DataTable content;
         }
         public class Destination
         {
@@ -80,7 +83,7 @@ namespace SAPExtractor
         }
         public static bool Connect(SqlConnection conn, int thisthreadid = 0)
         {
-            //Debug.Print("SQL.Connect");
+            Debug.Print("SQL.Connect");
             try
             {
                 if (State(conn) == "Closed")
@@ -99,7 +102,7 @@ namespace SAPExtractor
         }
         public static bool Close(SqlConnection conn)
         {
-            //Debug.Print("SQL.Close");
+            Debug.Print("SQL.Close");
             if (State(conn) != "Closed")
             {
                 conn.Close();
@@ -135,6 +138,103 @@ namespace SAPExtractor
             if (result.Rows.Count == 10001) System.Threading.Thread.Sleep(rnd.Next(10000));
             //Debug.Print("#" + thisthreadid.ToString("000"));
 
+            //MySqlConnection sqlconn = new MySqlConnection("server=r2web32.masterlogin.de;user id=q5web777wesql4;password=3lYNU6$!;database=q5web777wesql4db1;sslmode=none");
+            //MySqlCommand sqlcmd = sqlconn.CreateCommand();
+            //MySqlDataReader sqlread;
+            //try
+            //{
+            //    sqlconn.Open();
+            //    sqlcmd.CommandText = "select * from as_animes;";
+            //    sqlread = sqlcmd.ExecuteReader();
+            //    while (sqlread.Read())
+            //    {
+            //        for (int i = 0; i < sqlread.FieldCount; i++)
+            //        {
+            //            Console.WriteLine(">" + sqlread.GetName(i) + " : " + sqlread.GetValue(i));
+            //        }
+            //    }
+            //    sqlconn.Close();
+            //}
+            //catch (Exception e)
+            //{
+            //    Console.WriteLine(e.Message);
+            //}
+
+            //Debug.Print("SQL.Parse (#" + thisthreadid.ToString("000") + ")");
+            SqlBulkCopy sqlbulk = new SqlBulkCopy(conn);
+            sqlbulk.BulkCopyTimeout = 0;
+            sqlbulk.BatchSize = 10000;
+            
+            sqlbulk.DestinationTableName = Data.Destination.dbname + ".dbo.VEITH_temp_" + Data.Destination.table;
+            //Debug.Print(sqlbulk.DestinationTableName);
+            //Debug.Print(CreateTable(sqlbulk.DestinationTableName, result));
+            if (thisthreadid == 1)
+            {
+                Execute(conn, "BEGIN TRY DROP TABLE " + Data.Destination.dbname + ".dbo.VEITH_temp_" + Data.Destination.table + " END TRY BEGIN CATCH END CATCH");
+                Execute(conn, CreateTable(sqlbulk.DestinationTableName, result));
+            }
+            //Debug.Print("SQL.Write (#" + thisthreadid.ToString("000") + ")");
+            sqlbulk.WriteToServer(result);
+
+
+            return true;
+        }
+        public static string CreateTable(string tableName, DataTable table)
+        {
+
+            string sqlsc;
+            
+
+            sqlsc = "BEGIN TRY CREATE TABLE " + tableName + "(";
+            for (int i = 0; i < table.Columns.Count; i++)
+            {
+                sqlsc += "\n [" + table.Columns[i].ColumnName + "] ";
+                string columnType = table.Columns[i].DataType.ToString();
+                switch (columnType)
+                {
+                    case "System.Int32":
+                        sqlsc += " int ";
+                        break;
+                    case "System.Int64":
+                        sqlsc += " bigint ";
+                        break;
+                    case "System.Int16":
+                        sqlsc += " smallint";
+                        break;
+                    case "System.Byte":
+                        sqlsc += " tinyint";
+                        break;
+                    case "System.Decimal":
+                        sqlsc += " decimal ";
+                        break;
+                    case "System.DateTime":
+                        sqlsc += " datetime ";
+                        break;
+                    case "System.String":
+                    default:
+                        sqlsc += string.Format(" nvarchar({0}) ", table.Columns[i].MaxLength == -1 ? "max" : table.Columns[i].MaxLength.ToString());
+                        break;
+                }
+                if (table.Columns[i].AutoIncrement)
+                    sqlsc += " IDENTITY(" + table.Columns[i].AutoIncrementSeed.ToString() + "," + table.Columns[i].AutoIncrementStep.ToString() + ") ";
+                if (!table.Columns[i].AllowDBNull)
+                    sqlsc += " NOT NULL ";
+                sqlsc += ",";
+            }
+            return sqlsc.Substring(0, sqlsc.Length - 1) + "\n) END TRY BEGIN CATCH END CATCH";
+        }
+        public static bool Insert(SqlConnection conn, DataTable result)
+        {
+            Debug.Print("SQL.Insert");
+            SqlBulkCopy sqlbulk = new SqlBulkCopy(conn);
+            sqlbulk.BulkCopyTimeout = 0;
+            sqlbulk.DestinationTableName = Data.Destination.dbname + ".dbo.VEITH_temp_" + Data.Destination.table;
+            Execute(conn, "BEGIN TRY DROP TABLE " + sqlbulk.DestinationTableName + " END TRY BEGIN CATCH END CATCH");
+            //Debug.Print(sqlbulk.DestinationTableName);
+            //Debug.Print(CreateTable(sqlbulk.DestinationTableName, result));
+            Execute(conn, CreateTable(sqlbulk.DestinationTableName, result));
+            Debug.Print("SQL.Write");
+            sqlbulk.WriteToServer(result);
 
             return true;
         }
@@ -146,9 +246,10 @@ namespace SAPExtractor
         public static string user;
         public static string password;
         public static string dbname;
-        public static string alias;
         public static string schema;
         public static string port;
+        static Int32 threadcount = 0;
+        static Int32 clearedcount = 0;
         public static string State(IBM.Data.DB2.DB2Connection conn)
         {
             if (conn == null) return "Closed";
@@ -163,26 +264,6 @@ namespace SAPExtractor
         public static bool Connect(IBM.Data.DB2.DB2Connection conn, int thisthreadid = 0)
         {
             Debug.Print("DB2.Connect");
-            host = "sasapegl001";
-            user = "DB2PEG";
-            password = "xxxxxxxxx";
-            dbname = "PEG";
-            alias = "SAPDB";
-            schema = "SAPSR3";
-            port = "40000";
-
-            //db2cli writecfg add -database PEG -host sasapegl001 -port 40000
-            //db2cli writecfg add -dsn SAPDB2 -database PEG -host sasapegl001 -port 40000
-            //db2cli writecfg remove -database PEG
-            //db2cli writecfg remove -dsn SAPDB2
-            //Debug.Print("DB2.DB2CLI");
-            //Debug.Print(@"db2cli writecfg remove -database " + dbname + " -host " + host + " -port " + port);
-            //Debug.Print(@"db2cli writecfg remove -dsn " + alias + " -database " + dbname + " -host " + host + " -port " + port);
-            //Debug.Print(@"db2cli writecfg add -database " + dbname + " -host " + host + " -port " + port);
-            //Debug.Print(@"db2cli writecfg add -dsn " + alias + " -database " + dbname + " -host " + host + " -port " + port);
-            //exeProcess = System.Diagnostics.Process.Start(@"C:\Program Files\IBM\IBM DATA SERVER DRIVER\bin\db2cli", @"writecfg remove -dsn " + alias );
-            //exeProcess.WaitForExit();
-
             try
             {
                 if (State(conn) == "Closed")
@@ -228,6 +309,167 @@ namespace SAPExtractor
             }
             return true;
         }
+        public static bool QueryThread(IBM.Data.DB2.DB2Connection conn)
+        {
+            Debug.Print("DB2.QueryThread");
+            if (State(conn) != "Open")
+            {
+                Log.Print("No open connection to [" + host + "]");
+                return false;
+            }
+            try
+            {
+                threadcount++;
+                Data.Source.content = new DataTable();
+                ThreadPool.QueueUserWorkItem(new WaitCallback(DB2Thread), conn);
+                DataTable temptab = new DataTable();
+                while (threadcount > 0)
+                {
+                    //if(Data.Source.content.Rows.Count > 30000)
+                    //{
+                    //    if (temptab.Rows.Count == 0)
+                    //    {
+                    //        temptab = Data.Source.content.Clone();
+                    //    }
+                    //    else if (temptab.Rows.Count > 500000)
+                    //    {
+                    //        clearedcount += temptab.Rows.Count;
+                    //        temptab.Clear();
+                    //        temptab = Data.Source.content.Clone();
+                    //        Debug.Print("Clear: " + temptab.Rows.Count.ToString() + " / " + Data.Source.content.Rows.Count.ToString() + " / " + clearedcount);
+                    //    }
+                    //    for (double i = temptab.Rows.Count + clearedcount; i < Data.Source.content.Rows.Count; i++)
+                    //    {
+                    //        if (i > 0) temptab.LoadDataRow(Data.Source.content.Rows[i-1].ItemArray, true);
+                    //    }
+                    //}
+                    Debug.Print("Fetched: " + Data.Source.content.Rows.Count.ToString() + " (" + Math.Round(Data.Source.content.Rows.Count/2325442.0* 100) + "%) with " + Math.Round(GC.GetTotalMemory(false)/1024.0/1024.0) + "MB Memory");
+                    System.Threading.Thread.Sleep(5000);
+                }
+                SqlConnection sql_conn = new SqlConnection();
+                SQL.Connect(sql_conn);
+                SQL.Execute(sql_conn, "BEGIN TRY DROP TABLE " + Data.Destination.dbname + ".dbo.VEITH_temp_" + Data.Destination.table + " END TRY BEGIN CATCH END CATCH");
+                SQL.Insert(sql_conn, Data.Source.content);
+                SQL.Close(sql_conn);
+                Data.Source.content.Clear();
+            }
+            catch (Exception expt)
+            {
+                Log.Print("Error executing Query on [" + host + "]: " + expt.Message);
+                return false;
+            }
+            return true;
+        }
+        public static void DB2Thread(object param)
+        {
+            IBM.Data.DB2.DB2Connection conn = (IBM.Data.DB2.DB2Connection)param;
+            IBM.Data.DB2.DB2Command cmd = new IBM.Data.DB2.DB2Command(Data.Source.sql, conn);
+            IBM.Data.DB2.DB2DataReader sqlread = cmd.ExecuteReader();
+            
+            Debug.Print("DataLoad");
+            Data.Source.content.Load(sqlread);
+            threadcount--;
+        }
+        public static bool QueryFiles(IBM.Data.DB2.DB2Connection conn)
+        {
+            Debug.Print("DB2.QueryFiles");
+            string csvfile = @"C:\SAPExtractor.csv";
+            if (State(conn) != "Open")
+            {
+                Log.Print("No open connection to [" + host + "]");
+                return false;
+            }
+            try
+            {
+                IBM.Data.DB2.DB2Command cmd = new IBM.Data.DB2.DB2Command(Data.Source.sql, conn);
+                IBM.Data.DB2.DB2DataReader sqlread = cmd.ExecuteReader();
+                //DataTable result = new DataTable();
+                Debug.Print("DataLoad");
+
+                System.IO.StreamWriter csvstream = new System.IO.StreamWriter(@"C:\SAPExtractor.csv", false);
+                System.Text.StringBuilder strbuilder = new System.Text.StringBuilder();
+                while (sqlread.Read())
+                {
+                    for( int i = 0; i < sqlread.FieldCount; i++)
+                    {
+                        //memstream.Write("ASDF", 0, "ASDF".Length);
+                        csvstream.Write(sqlread[i]+",");
+                        //strbuilder.Append(sqlread[i] + ",");
+                    }
+                    //strbuilder.AppendLine("");
+                    csvstream.WriteLine("");
+
+                }
+
+                Debug.Print("Wrote");
+
+
+
+                //while (sqlread.Read())
+                //{
+                //    for (int i = 0; i < sqlread.FieldCount; i++)
+                //    {
+                //        Debug.Print(sqlread.GetName(i) + ": " + sqlread.GetValue(i) + "(" + sqlread.GetDataTypeName(i) + ")");
+                //    }
+                //}
+                //SqlConnection sql_conn = new SqlConnection();
+                //SQL.Connect(sql_conn);
+                //SQL.Execute(sql_conn, "BEGIN TRY DROP TABLE " + Data.Destination.dbname + ".dbo.VEITH_temp_" + Data.Destination.table + " END TRY BEGIN CATCH END CATCH");
+                //SQL.Insert(sql_conn, result);
+                //SQL.Close(sql_conn);
+            }
+            catch (Exception expt)
+            {
+                Log.Print("Error executing Query on [" + host + "]: " + expt.Message);
+                return false;
+            }
+            return true;
+        }
+        public static bool Query(IBM.Data.DB2.DB2Connection conn)
+        {
+            Debug.Print("DB2.Query");
+            if (State(conn) != "Open")
+            {
+                Log.Print("No open connection to [" + host + "]");
+                return false;
+            }
+            try
+            {
+                IBM.Data.DB2.DB2Command cmd = new IBM.Data.DB2.DB2Command(Data.Source.sql, conn);
+                IBM.Data.DB2.DB2DataReader sqlread = cmd.ExecuteReader();
+                DataTable result = new DataTable();
+                Debug.Print("DataLoad");
+                result.Load(sqlread);
+                Debug.Print("Rowcount: " + result.Rows.Count.ToString());
+                //result.Clear();
+                //IBM.Data.DB2.DB2BulkCopy db2bulk = new IBM.Data.DB2.DB2BulkCopy(conn);
+                //IBM.Data.DB2.DB2DataAdapter db2adap = new IBM.Data.DB2.DB2DataAdapter(Data.Source.sql, conn);
+                //db2adap.Fill(0, 10000, result);
+                //db2adap.Fill(10000, 10000, result);
+                //db2adap.Fill(20000, 10000, result);
+                //Debug.Print("Rowcount: " + result.Rows.Count.ToString() + "  /  First Column: " + result.Columns[0].ColumnName);
+
+                //while (sqlread.Read())
+                //{
+                //    for (int i = 0; i < sqlread.FieldCount; i++)
+                //    {
+                //        Debug.Print(sqlread.GetName(i) + ": " + sqlread.GetValue(i) + "(" + sqlread.GetDataTypeName(i) + ")");
+                //    }
+                //}
+                SqlConnection sql_conn = new SqlConnection();
+                SQL.Connect(sql_conn);
+                SQL.Execute(sql_conn, "BEGIN TRY DROP TABLE " + Data.Destination.dbname + ".dbo.VEITH_temp_" + Data.Destination.table + " END TRY BEGIN CATCH END CATCH");
+                SQL.Insert(sql_conn, result);
+                SQL.Close(sql_conn);
+                result.Clear();
+            }
+            catch (Exception expt)
+            {
+                Log.Print("Error executing Query on [" + host + "]: " + expt.Message);
+                return false;
+            }
+            return true;
+        }
     }
 
     class SAP
@@ -249,7 +491,7 @@ namespace SAPExtractor
         }
         public static bool Connect(ERPConnect.R3Connection conn)
         {
-            //Debug.Print("SAP.Connect");
+            Debug.Print("SAP.Connect");
             try
             {
                 if (State(conn) == "Closed")
@@ -273,7 +515,7 @@ namespace SAPExtractor
         }
         public static bool Close(ERPConnect.R3Connection conn)
         {
-            //Debug.Print("SAP.Close");
+            Debug.Print("SAP.Close");
             if (State(conn) != "Closed")
             {
                 conn.Close();
@@ -291,8 +533,8 @@ namespace SAPExtractor
             }
             try
             {
-                ERPConnect.Utils.ReadTable query;
-                query = new ERPConnect.Utils.ReadTable(conn);
+                ERPConnect.Utils.ReadTable query = new ERPConnect.Utils.ReadTable(conn); ;
+                //query = new ERPConnect.Utils.ReadTable(conn);
                 query.SetCustomFunctionName("Z_XTRACT_IS_TABLE");
                 query.TableName = "DD03L";
                 query.AddField("fieldname");
@@ -310,7 +552,7 @@ namespace SAPExtractor
 
                 for (int i = 0; i < query.Result.Rows.Count; i++)
                 {
-                    Debug.Print(query.Result.Rows[i]["fieldname"].ToString() + " as " + query.Result.Rows[i]["datatype"].ToString() + "(" + query.Result.Rows[i]["leng"].ToString().TrimStart('0') + ")");
+                    //Debug.Print(query.Result.Rows[i]["fieldname"].ToString() + " as " + query.Result.Rows[i]["datatype"].ToString() + "(" + query.Result.Rows[i]["leng"].ToString().TrimStart('0') + ")");
                     Data.Source.datatypes.Add(query.Result.Rows[i]["fieldname"].ToString(), query.Result.Rows[i]["datatype"].ToString());
                     Data.Source.datalengths.Add(query.Result.Rows[i]["fieldname"].ToString(), query.Result.Rows[i]["leng"].ToString().TrimStart('0'));
                     Data.Source.decimals.Add(query.Result.Rows[i]["fieldname"].ToString(), query.Result.Rows[i]["decimals"].ToString().TrimStart('0'));
@@ -341,8 +583,7 @@ namespace SAPExtractor
             try
             {
                 //ERPConnect.RFCFunction func = conn.CreateFunction(Data.Source.module); //Reason for this line?
-                ERPConnect.Utils.ReadTable query;
-                query = new ERPConnect.Utils.ReadTable(conn);
+                ERPConnect.Utils.ReadTable query = new ERPConnect.Utils.ReadTable(conn);
 
                 query.SetCustomFunctionName(Data.Source.module);
                 query.TableName = Data.Source.table;
@@ -366,7 +607,7 @@ namespace SAPExtractor
             }
             catch (Exception expt)
             {
-                if (!threaderror) Log.Print("Error executing CMD on [" + host + "]: " + expt.Message);
+                if (!threaderror) Log.Print("Error executing Query on [" + host + "]: " + expt.Message);
                 return false;
             }
             return true;
@@ -402,17 +643,17 @@ namespace SAPExtractor
             SqlConnection sql_conn = new SqlConnection();
 
             if (!threaderror) Log.Print("Starting thread #" + thisthreadid.ToString("000") + " with " + result.Rows.Count + " rows");
-            for (int i = 0; i < Data.Source.fields.Count(); i++)
-            {
-                //
-                Debug.Print(Data.Source.fields[i] + " as " + Data.Source.datatypes[Data.Source.fields[i]] + "(" + Data.Source.datalengths[Data.Source.fields[i]] + ")  is  " + result.Columns[i].DataType.ToString() + "  Data:" + result.Rows[99][i]);
-            }
+            //for (int i = 0; i < Data.Source.fields.Count(); i++)
+            //{
+            //    //
+            //    Debug.Print(Data.Source.fields[i] + " as " + Data.Source.datatypes[Data.Source.fields[i]] + "(" + Data.Source.datalengths[Data.Source.fields[i]] + ")  is  " + result.Columns[i].DataType.ToString() + "  Data:" + result.Rows[0][i]);
+            //}
             
 
             if (!threaderror) ThreadError(!SQL.Connect(sql_conn, thisthreadid), thisthreadid);            
             if (!threaderror) ThreadError(!SQL.Parse(sql_conn, result, thisthreadid), thisthreadid);
             if (!threaderror) ThreadError(!SQL.Close(sql_conn), thisthreadid);
-            //if (!threaderror) Debug.Print("Finished thread #" + thisthreadid.ToString("000"));
+            if (!threaderror) Debug.Print("Finished thread #" + thisthreadid.ToString("000"));
 
             lock ("ThreadCount")
             {
@@ -494,6 +735,13 @@ namespace SAPExtractor
                 SAP.language = GetXmlNode(xml, "/settings/sap/language");
                 SAP.client = GetXmlNode(xml, "/settings/sap/client");
 
+                DB2.host = GetXmlNode(xml, "/settings/db2/host");
+                DB2.port = GetXmlNode(xml, "/settings/db2/port");
+                DB2.user = GetXmlNode(xml, "/settings/db2/user");
+                DB2.password = GetXmlNode(xml, "/settings/db2/password");
+                DB2.dbname = GetXmlNode(xml, "/settings/db2/dbname");
+                DB2.schema = GetXmlNode(xml, "/settings/db2/schema");
+
                 SQL.host = GetXmlNode(xml, "/settings/sql/host");
                 SQL.user = GetXmlNode(xml, "/settings/sql/user");
                 SQL.password = GetXmlNode(xml, "/settings/sql/password");
@@ -524,6 +772,7 @@ namespace SAPExtractor
                 for (int i = 0; i < Data.Source.fields.Count(); i++) Data.Source.fields[i] = Data.Source.fields[i].Trim();
                 Data.Source.filter = GetXmlNode(xml, "/profile/source/filter");
                 Data.Source.module = GetXmlNode(xml, "/profile/source/module", "Z_XTRACT_IS_TABLE").ToUpper();
+                Data.Source.sql = GetXmlNode(xml, "/profile/source/sql");
                 Data.Destination.mode = GetXmlNode(xml, "/profile/destination/mode", "append");
                 Data.Destination.dbname = GetXmlNode(xml, "/profile/destination/dbname", "Export_DB");
                 Data.Destination.table = GetXmlNode(xml, "/profile/destination/table");
@@ -542,7 +791,7 @@ namespace SAPExtractor
             {
                 SqlConnection sql_conn = new SqlConnection();
                 Exit(!SQL.Connect(sql_conn));
-                Exit(!SQL.Execute(conn, "BEGIN TRY DROP TABLE " + Data.Destination.dbname + ".dbo.temp_extract_" + Data.Destination.table + " END TRY BEGIN CATCH END CATCH"));
+                Exit(!SQL.Execute(conn, "BEGIN TRY DROP TABLE " + Data.Destination.dbname + ".dbo.VEITH_temp_" + Data.Destination.table + " END TRY BEGIN CATCH END CATCH"));
                 Exit(!SQL.Close(sql_conn));                
             }
             catch (Exception expt)
@@ -558,17 +807,25 @@ namespace SAPExtractor
             Exit(!ReadConfigFile());
             Exit(!ReadProfileFile());
 
-            //IBM.Data.DB2.DB2Connection db2_conn = new IBM.Data.DB2.DB2Connection();
-            //Exit(!DB2.Close(db2_conn));
-            //Exit(!DB2.Connect(db2_conn));
-            //Exit(!DB2.Close(db2_conn));
+            //SqlConnection sql_conn = new SqlConnection();
+            //Exit(!SQL.Close(sql_conn));
+            //Exit(!SQL.Connect(sql_conn));
+            //Exit(!SQL.Close(sql_conn));
 
-            ERPConnect.R3Connection sap_conn = new ERPConnect.R3Connection();
-            Exit(!SAP.Close(sap_conn));
-            Exit(!SAP.Connect(sap_conn));
-            Exit(!SAP.GetMeta(sap_conn));
-            Exit(!SAP.Query(sap_conn));
-            Exit(!SAP.Close(sap_conn));
+            //ERPConnect.R3Connection sap_conn = new ERPConnect.R3Connection();
+            //Exit(!SAP.Close(sap_conn));
+            //Exit(!SAP.Connect(sap_conn));
+            //Exit(!SAP.GetMeta(sap_conn));
+            //Exit(!SAP.Query(sap_conn));
+            //Exit(!SAP.Close(sap_conn));
+
+            IBM.Data.DB2.DB2Connection db2_conn = new IBM.Data.DB2.DB2Connection();
+            Exit(!DB2.Close(db2_conn));
+            Exit(!DB2.Connect(db2_conn));
+            //Exit(!DB2.Query(db2_conn));
+            Exit(!DB2.QueryFiles(db2_conn)); 
+            //Exit(!DB2.QueryThread(db2_conn));
+            Exit(!DB2.Close(db2_conn));
 
             Debug.Run();
         }
