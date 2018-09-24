@@ -1,0 +1,42 @@
+<config>
+  <program>
+    <batchsize>100000</batchsize>
+  </program>
+  <sap>
+    <host>sasapegl001</host>
+    <port>5912</port>
+    <dbname>PEG</dbname>
+    <schema>SAPSR3</schema>
+    <username>db2read</username>
+    <password>JRoicbp5x</password>
+  </sap>
+  <dwh>
+    <host>saaplegl001</host>
+    <dbname>Export_DB</dbname>
+    <schema>dbo</schema>
+    <username>export_db</username>
+    <password>export_dwh_2008</password>
+  </dwh>
+</config>
+
+<!--PROD
+  <sap>
+    <host>sasapegl001</host>
+    <port>5912</port>
+    <dbname>PEG</dbname>
+    <schema>SAPSR3</schema>
+    <username>db2read</username>
+    <password>JRoicbp5x</password>
+  </sap>
+-->
+
+<!--TEST
+  <sap>
+    <host>sasapegl003</host>
+    <port>5912</port>
+    <dbname>EEG</dbname>
+    <schema>SAPSR3</schema>
+    <username>db2read</username>
+    <password>JRoicbp5x</password>
+  </sap>
+-->
