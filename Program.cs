@@ -14,6 +14,7 @@ namespace SAPExtractor
         {
 #if DEBUG
             Console.WriteLine("DEBUG");
+            Console.WriteLine(Data.index_names.IndexOf("pk"));
 #endif
         }
         static public void End()
@@ -21,7 +22,6 @@ namespace SAPExtractor
 #if DEBUG
             Console.WriteLine("");
             Console.WriteLine("Press any key to close ...");
-            Console.WriteLine("Don't forget to set ErrorCodes properly!");
             Console.ReadKey(true);
 #endif
         }
@@ -36,6 +36,9 @@ namespace SAPExtractor
         public static string temptable, finaltable, backuptable, rowcount;
         public static List<string> field_names = new List<string>();
         public static List<string> field_types = new List<string>();
+        public static List<string> index_names = new List<string>();
+        public static List<string> index_unique = new List<string>();
+        public static List<string> index_fields = new List<string>();
         public static List<string> param_names = new List<string>();
         public static List<string> param_sources = new List<string>();
         public static List<string> param_queries = new List<string>();
@@ -93,6 +96,7 @@ namespace SAPExtractor
             Log.Print("FINISHED - Profile:[" + Data.profile + "] - RunID:[" + Data.runid + "] - Duration:[" + Math.Floor(runtime.TotalHours).ToString("##00") + ":" + runtime.Minutes.ToString("00") + ":" + runtime.Seconds.ToString("00") + "]");
             Log.Print("<hr>");
             Log.Close();
+            Debug.Run();
             
             Program.Exit(-1);
         }
@@ -131,9 +135,9 @@ namespace SAPExtractor
                 Log.Print("MD5 of ProfileXML: [" + xml.md5 + "]");
                 Data.md5_profile = xml.md5;
                 Data.sap_query = xml.GetValue("/profile/sap/query");
-                Data.sap_nullable = xml.GetValue("/profile/sap/nullable", true);
+                Data.sap_nullable = xml.GetValue("/profile/sap/query/@nullable", true);
                 Data.dwh_table = xml.GetValue("/profile/dwh/tablename");
-                Data.dwh_insertmode = xml.GetValue("/profile/dwh/insertmode");
+                Data.dwh_insertmode = xml.GetValue("/profile/dwh/insertmode").ToLower();
                 Data.dwh_finalization = xml.GetValue("/profile/dwh/finalization", true);
 
                 for (int i = 1; i <= xml.GetCount("/profile/dwh/fieldtypes/field"); i++)
@@ -141,17 +145,23 @@ namespace SAPExtractor
                     Data.field_names.Add(xml.GetValue("/profile/dwh/fieldtypes/field[" + i + "]/@name"));
                     Data.field_types.Add(xml.GetValue("/profile/dwh/fieldtypes/field[" + i + "]/@type"));
                 }
+                for (int i = 1; i <= xml.GetCount("/profile/dwh/indexes/index", true); i++)
+                {
+                    Data.index_names.Add(xml.GetValue("/profile/dwh/indexes/index[" + i + "]/@name").ToLower());
+                    Data.index_unique.Add(xml.GetValue("/profile/dwh/indexes/index[" + i + "]/@unique").ToLower());
+                    Data.index_fields.Add(xml.GetValue("/profile/dwh/indexes/index[" + i + "]/@fields"));
+                }
                 for (int i = 1; i <= xml.GetCount("/profile/parameters/param", true); i++)
                 {
                     Data.param_names.Add(xml.GetValue("/profile/parameters/param[" + i + "]/@name"));
-                    Data.param_sources.Add(xml.GetValue("/profile/parameters/param[" + i + "]/@source"));
+                    Data.param_sources.Add(xml.GetValue("/profile/parameters/param[" + i + "]/@source").ToLower());
                     Data.param_queries.Add(xml.GetValue("/profile/parameters/param[" + i + "]"));
                     Data.param_values.Add("");
                 }
                 Data.temptable = "[" + Data.dwh_dbname + "].[" + Data.dwh_schema + "].[SAPExtractor_tmp_" + Data.profile + "]";
                 Data.finaltable = "[" + Data.dwh_dbname + "].[" + Data.dwh_schema + "].[" + Data.dwh_table + "]";
                 Data.backuptable = "[" + Data.dwh_dbname + "].[" + Data.dwh_schema + "].[SAPExtractor_bak_" + Data.profile + "]";
-                if (Data.dwh_insertmode != "append" && Data.dwh_insertmode != "truncate" && Data.dwh_insertmode != "manual")
+                if (Data.dwh_insertmode != "append" && Data.dwh_insertmode != "truncate" && Data.dwh_insertmode != "merge" && Data.dwh_insertmode != "manual")
                 {
                     Log.Print("Invalid insertmode in profile: " + Data.dwh_insertmode);
                     Program.Exit(5);
@@ -160,6 +170,11 @@ namespace SAPExtractor
                 if (Data.sap_nullable != "y" && Data.sap_nullable != "n")
                 {
                     Log.Print("Invalid nullable value in profile: " + Data.sap_nullable);
+                    Program.Exit(6);
+                }
+                if (Data.dwh_insertmode == "merge" && Data.index_names.IndexOf("pk") < 0)
+                {
+                    Log.Print("Insertmode 'merge' requires a unique index named 'pk'!");
                     Program.Exit(6);
                 }
                 Program.Exit(0);
@@ -230,6 +245,9 @@ namespace SAPExtractor
                 }
                 sql = sql.Trim(',') + ")";
                 DB.Execute("dwh", sql);
+
+                //Create PK-Index if available
+                //if (Data.index_names.IndexOf("pk") >= 0) DB.Execute("dwh", "create unique nonclustered index " + Data.dwh_table + "_tmpPK on " + Data.temptable + " (" + Data.index_fields[Data.index_names.IndexOf("pk")] + ")");
 
                 Program.SetExtractLog("Update", "status='1'");
             }
@@ -317,9 +335,7 @@ namespace SAPExtractor
         }
         static void TransformData()
         {
-            string sql = "select ";
-            string columns = "";
-            bool newtable = false;
+            string sql = "";
             try
             {
                 if (Data.dwh_insertmode == "manual")
@@ -329,38 +345,30 @@ namespace SAPExtractor
                 else
                 {
                     Log.Print("Preparing data transformation");
-                    if (DB.QueryValue("dwh", "select count(object_id('" + Data.finaltable + "','U'))", true) == "0") newtable = true;
 
-                    for (int i = 0; i < Data.field_names.Count(); i++)
+                    if (DB.QueryValue("dwh", "select count(object_id('" + Data.finaltable + "','U'))", true) == "0")
                     {
-                        if (i > 0) columns += ", ";
-                        if (i > 0) sql += ", ";
+                        Log.Print("  Creating destination table");
+                        sql = "create table " + Data.finaltable + "(";
+                        for (int i = 0; i < Data.field_types.Count; i++) sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + ",";
+                        sql = sql.Trim(',') + ")";
+                        DB.Execute("dwh", sql);
 
-                        columns += "[" + Data.field_names[i] + "]";
-
-                        if (Data.field_types[i].ToLower().Contains("date"))
+                        if (Data.index_names.Count > 0) Log.Print("  Creating destination indexes");
+                        for (int i = 0; i < Data.index_names.Count; i++)
                         {
-                            sql += "convert(" + Data.field_types[i].ToLower() + ", case when [" + Data.field_names[i] + "] = '00000000' then null when [" + Data.field_names[i] + "] > '20790101' then '20790101' when [" + Data.field_names[i] + "] < '19000101' then '19000101' else [" + Data.field_names[i] + "] end,112) as [" + Data.field_names[i] + "]";
+                            if (Data.index_unique[i] == "y" || Data.index_names[i] == "pk")
+                            {
+                                sql = "create unique nonclustered index " + Data.dwh_table + "_" + Data.index_names[i].ToUpper().Replace(" ", "") + " on " + Data.finaltable + " (" + Data.index_fields[i] + ")";
+                            }
+                            else
+                            {
+                                sql = "create nonclustered index " + Data.dwh_table + "_" + Data.index_names[i].ToUpper().Replace(" ", "") + " on " + Data.finaltable + " (" + Data.index_fields[i] + ")";
+                            }
+                            DB.Execute("dwh", sql);
                         }
-                        else if (Data.field_types[i].ToLower().Contains("varchar"))
-                        {
-                            sql += "ltrim(rtrim([" + Data.field_names[i] + "]))  as [" + Data.field_names[i] + "]";
-                        }
-                        else
-                        {
-                            sql += "[" + Data.field_names[i] + "]";
-                        }
-                        if (Data.field_types[i].ToLower() == "datetime") sql += "convert(date," + Data.field_names[i] + ",112)";
                     }
-
-                    if (newtable) sql = sql + " into " + Data.finaltable + " from " + Data.temptable;
-                    else sql = "insert into " + Data.finaltable + "(" + columns + ") " + sql + " from " + Data.temptable;
-
-                    if (Data.dwh_insertmode == "truncate" && newtable)
-                    {
-                        Log.Print("  Truncation obsolete on new tables");
-                    }
-                    else if (Data.dwh_insertmode == "truncate" && !newtable)
+                    else if (Data.dwh_insertmode == "truncate")
                     {
                         Log.Print("  Truncating destination table");
                         DB.Execute("dwh", "begin try drop table " + Data.backuptable + " end try begin catch end catch");
@@ -368,6 +376,39 @@ namespace SAPExtractor
                         DB.Execute("dwh", "truncate table " + Data.finaltable);
                     }
                     Program.SetExtractLog("Update", "status='6'");
+
+                    if (Data.dwh_insertmode == "merge")
+                    {
+                        sql = "merge " + Data.finaltable + " as d using (select ";
+                    }
+                    else if (Data.dwh_insertmode == "truncate" || Data.dwh_insertmode == "append")
+                    {
+                        sql = "insert into " + Data.finaltable + " (";
+                        for (int i = 0; i < Data.field_names.Count(); i++) sql += "[" + Data.field_names[i] + "],";
+                        sql = sql.TrimEnd(',') + ") select ";
+                    }
+                    for (int i = 0; i < Data.field_names.Count(); i++)
+                    {
+                        sql += DB.ConvertType("dwh", Data.field_types[i], Data.field_names[i]) + " as [" + Data.field_names[i] + "],";
+                    }
+                    sql = sql.TrimEnd(',') + " from " + Data.temptable;
+                    if (Data.dwh_insertmode == "merge")
+                    {
+                        sql += ") as x on ";
+                        string[] columns = Data.index_fields[Data.index_names.IndexOf("pk")].Split(',');
+                        for (int i = 0; i < columns.Count(); i++)
+                        {
+                            if (i > 0) sql += "and ";
+                            sql += "x.[" + columns[i] + "] = d.[" + columns[i] + "] ";
+                        }
+                        sql += "when not matched then insert (";
+                        for (int i = 0; i < Data.field_names.Count(); i++) sql += "[" + Data.field_names[i] + "],";
+                        sql = sql.TrimEnd(',') + ") values (";
+                        for (int i = 0; i < Data.field_names.Count(); i++) sql += "x.[" + Data.field_names[i] + "],";
+                        sql = sql.TrimEnd(',') + ") when matched then update set ";
+                        for (int i = 0; i < Data.field_names.Count(); i++) sql += "d.[" + Data.field_names[i] + "] = x.[" + Data.field_names[i] + "],";
+                        sql = sql.TrimEnd(',') + ";";
+                    }
 
                     Log.Print("Transforming data into DWH");
                     DB.Execute("dwh", sql);
@@ -641,6 +682,21 @@ namespace SAPExtractor
                 throw expt;
             }
         }
+        public static string ConvertType(string db, string type, string value)
+        {
+            if (db == "dwh" && type.ToLower().Contains("date"))
+            {
+                return "convert(" + type.ToLower() + ", case when [" + value + "] = '00000000' then null when [" + value + "] > '20790101' then '20790101' when [" + value + "] < '19000101' then '19000101' else [" + value + "] end,112)";
+            }
+            else if (db == "dwh" && type.ToLower().Contains("varchar"))
+            {
+                return "ltrim(rtrim([" + value + "]))";
+            }
+            else
+            {
+                return "[" + value + "]";
+            }
+        }
     }
 
     class XML
@@ -655,8 +711,16 @@ namespace SAPExtractor
             try
             {
                 this.filepath = filepath;
-                CalculateMD5();
-                FetchContent();
+                if (System.IO.File.Exists(filepath))
+                { 
+                    CalculateMD5();
+                    FetchContent();
+                    BackupFile();
+                }
+                else
+                {
+                    throw new Exception("File not found!");
+                }
             }
             catch (Exception expt)
             {
@@ -701,6 +765,19 @@ namespace SAPExtractor
             {
                 Log.Print("Error fetching XML [" + filepath + "]: " + expt.Message);
                 throw expt;
+            }
+        }
+        void BackupFile()
+        {
+            try
+            {
+                string dir = Program.workdir + @"\Backup";
+                System.IO.Directory.CreateDirectory(dir);
+                System.IO.File.Copy(filepath, dir + @"\" + System.IO.Path.GetFileNameWithoutExtension(filepath) + "_" + md5 + ".xml", true);
+            }
+            catch (Exception expt)
+            {
+                Log.Print("  Could not store backup of XML");
             }
         }
         public string GetValue(string element, bool allownull = false)
@@ -752,6 +829,7 @@ namespace SAPExtractor
         {
             try
             {
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(filepath));
                 logstream = new System.IO.StreamWriter(filepath, true);
                 logstream.AutoFlush = true;
             }
@@ -769,7 +847,7 @@ namespace SAPExtractor
             Console.WriteLine(output);
             if (logstream != null) logstream.WriteLine(output);
         }
-        public static string Trunc(string text, int length = 20)
+        public static string Trunc(string text, int length = 40)
         {
             if (text.Trim().Length > length) return text.Trim().Substring(0, length).Trim() + "...";
             return text;
