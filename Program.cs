@@ -265,6 +265,7 @@ namespace SAPExtractor
             {
                 Log.Print("Querying predefined parameters");
 
+                Program.ReplaceParameter("DestinationTable", Data.dwh_table);
                 Program.ReplaceParameter("ThisProfile", Data.profile);
                 Program.ReplaceParameter("ThisRunID", Data.runid);
 
@@ -286,7 +287,7 @@ namespace SAPExtractor
                     param = "";
                     for (int i = 0; i < cnt; i++)
                     {
-                        if (Data.param_names[i] == "ThisProfile" || Data.param_names[i] == "ThisRunID" || Data.param_names[i] == "LastRunID" || Data.param_names[i] == "LastFinishedRunID")
+                        if (Data.param_names[i] == "ThisProfile" || Data.param_names[i] == "ThisRunID" || Data.param_names[i] == "LastRunID" || Data.param_names[i] == "LastFinishedRunID" || Data.param_names[i] == "DestinationTable")
                         {
                             Log.Print("  " + Data.param_names[i] + ": Predefined parameter can not be changed!");
                         }
