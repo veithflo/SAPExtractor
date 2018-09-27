@@ -356,7 +356,6 @@ namespace SAPExtractor
                         if (j >= 0) pk = "," + Data.index_fields[j].ToLower().Replace(" ", "") + ",";
                         for (int i = 0; i < Data.field_types.Count; i++)
                         {
-                            sql += " [" + Data.field_names[i] + "] " + Data.field_types[i];
                             if (pk.Contains("," + Data.field_names[i].ToLower() + ",")) sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + " not null,";
                             else sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + ",";
                         }
