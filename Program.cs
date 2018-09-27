@@ -318,6 +318,7 @@ namespace SAPExtractor
         {
             Data.sap_query = Data.sap_query.Replace("{{" + name + "}}", value);
             Data.dwh_finalization = Data.dwh_finalization.Replace("{{" + name + "}}", value);
+            for (int i = 0; i < Data.param_queries.Count(); i++) Data.param_queries[i].Replace("{{" + name + "}}", value);
         }
         static void ExtractData()
         {
