@@ -291,7 +291,7 @@ namespace SAPExtractor
                         {
                             Log.Print("  " + Data.param_names[i] + ": Predefined parameter can not be changed!");
                         }
-                        else if (Data.sap_query.Contains("{{" + Data.param_names[i] + "}}") || Data.dwh_finalization.Contains("{{" + Data.param_names[i] + "}}"))
+                        else if (Program.CheckParameter(Data.param_names[i]))
                         {
                             Data.param_values[i] = DB.QueryValue(Data.param_sources[i], Data.param_queries[i]);
                             Program.ReplaceParameter(Data.param_names[i], Data.param_values[i]);
@@ -318,7 +318,14 @@ namespace SAPExtractor
         {
             Data.sap_query = Data.sap_query.Replace("{{" + name + "}}", value);
             Data.dwh_finalization = Data.dwh_finalization.Replace("{{" + name + "}}", value);
-            for (int i = 0; i < Data.param_queries.Count(); i++) Data.param_queries[i].Replace("{{" + name + "}}", value);
+            for (int i = 0; i < Data.param_queries.Count; i++) Data.param_queries[i].Replace("{{" + name + "}}", value);
+        }
+        static bool CheckParameter(string name)
+        {
+            if (Data.sap_query.Contains("{{" + name + "}}")) return true;
+            if (Data.dwh_finalization.Contains("{{" + name + "}}")) return true;
+            for (int i = 0; i < Data.param_queries.Count; i++) if (Data.param_queries[i].Contains("{{" + name + "}}")) return true;
+            return false;
         }
         static void ExtractData()
         {
