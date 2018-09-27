@@ -337,6 +337,7 @@ namespace SAPExtractor
         static void TransformData()
         {
             string sql = "";
+            string pk = "";
             try
             {
                 if (Data.dwh_insertmode == "manual")
@@ -351,14 +352,26 @@ namespace SAPExtractor
                     {
                         Log.Print("  Creating destination table");
                         sql = "create table " + Data.finaltable + "(";
-                        for (int i = 0; i < Data.field_types.Count; i++) sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + ",";
-                        sql = sql.Trim(',') + ")";
+                        int j = Data.index_names.IndexOf("pk");
+                        if (j >= 0) pk = "," + Data.index_fields[j].ToLower().Replace(" ", "") + ",";
+                        for (int i = 0; i < Data.field_types.Count; i++)
+                        {
+                            sql += " [" + Data.field_names[i] + "] " + Data.field_types[i];
+                            if (pk.Contains("," + Data.field_names[i].ToLower() + ",")) sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + " not null,";
+                            else sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + ",";
+                        }
+                        sql = sql.TrimEnd(',') + ")";
                         DB.Execute("dwh", sql);
 
                         if (Data.index_names.Count > 0) Log.Print("  Creating destination indexes");
                         for (int i = 0; i < Data.index_names.Count; i++)
                         {
-                            if (Data.index_unique[i] == "y" || Data.index_names[i] == "pk")
+                            if (Data.index_names[i] == "pk")
+                            {
+                                //sql = "create unique clustered index " + Data.dwh_table + "_" + Data.index_names[i].ToUpper().Replace(" ", "") + " on " + Data.finaltable + " (" + Data.index_fields[i] + ")";
+                                sql = "alter table " + Data.finaltable + " add constraint " + Data.dwh_table + "_PK primary key clustered (" + Data.index_fields[i] + ")";
+                            }
+                            else if (Data.index_unique[i] == "y")
                             {
                                 sql = "create unique nonclustered index " + Data.dwh_table + "_" + Data.index_names[i].ToUpper().Replace(" ", "") + " on " + Data.finaltable + " (" + Data.index_fields[i] + ")";
                             }
