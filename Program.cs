@@ -240,7 +240,8 @@ namespace SAPExtractor
                 sql = "create table " + Data.temptable + "(";
                 for (int i = 0; i < Data.field_types.Count; i++)
                 {
-                    if (Data.field_types[i].ToLower().Contains("date")) sql += " [" + Data.field_names[i] + "] varchar(14),";
+                    if (Data.field_types[i].ToLower().Contains("date")) sql += " [" + Data.field_names[i] + "] varchar(14) collate Latin1_General_CS_AS,";
+                    else if (Data.field_types[i].ToLower().Contains("varchar")) sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + " collate Latin1_General_CS_AS,";
                     else sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + ",";
                 }
                 sql = sql.Trim(',') + ")";
