@@ -318,7 +318,7 @@ namespace SAPExtractor
         {
             Data.sap_query = Data.sap_query.Replace("{{" + name + "}}", value);
             Data.dwh_finalization = Data.dwh_finalization.Replace("{{" + name + "}}", value);
-            for (int i = 0; i < Data.param_queries.Count; i++) Data.param_queries[i].Replace("{{" + name + "}}", value);
+            for (int i = 0; i < Data.param_queries.Count; i++) Data.param_queries[i] = Data.param_queries[i].Replace("{{" + name + "}}", value);
         }
         static bool CheckParameter(string name)
         {
@@ -364,8 +364,10 @@ namespace SAPExtractor
                         if (j >= 0) pk = "," + Data.index_fields[j].ToLower().Replace(" ", "") + ",";
                         for (int i = 0; i < Data.field_types.Count; i++)
                         {
-                            if (pk.Contains("," + Data.field_names[i].ToLower() + ",")) sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + " not null,";
-                            else sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + ",";
+                            sql += " [" + Data.field_names[i] + "] " + Data.field_types[i];
+                            if (Data.field_types[i].ToLower().Contains("varchar")) sql += " collate Latin1_General_CS_AS";
+                            if (pk.Contains("," + Data.field_names[i].ToLower() + ",")) sql += " not null";
+                            sql += ",";
                         }
                         sql = sql.TrimEnd(',') + ")";
                         DB.Execute("dwh", sql);
