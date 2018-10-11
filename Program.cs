@@ -36,6 +36,7 @@ namespace SAPExtractor
         public static string temptable, finaltable, backuptable, rowcount;
         public static List<string> field_names = new List<string>();
         public static List<string> field_types = new List<string>();
+        public static List<string> field_collations = new List<string>();
         public static List<string> index_names = new List<string>();
         public static List<string> index_unique = new List<string>();
         public static List<string> index_fields = new List<string>();
@@ -144,6 +145,7 @@ namespace SAPExtractor
                 {
                     Data.field_names.Add(xml.GetValue("/profile/dwh/fieldtypes/field[" + i + "]/@name"));
                     Data.field_types.Add(xml.GetValue("/profile/dwh/fieldtypes/field[" + i + "]/@type"));
+                    Data.field_collations.Add(xml.GetValue("/profile/dwh/fieldtypes/field[" + i + "]/@collation", true));
                 }
                 for (int i = 1; i <= xml.GetCount("/profile/dwh/indexes/index", true); i++)
                 {
@@ -212,8 +214,8 @@ namespace SAPExtractor
                     {
                         if (proc[i].Id.ToString() == oldpid && proc[i].ProcessName == System.Diagnostics.Process.GetCurrentProcess().ProcessName)
                         {
-                            Log.Print("Stoping this RunID due to other still running ProcessID [" + oldpid + "]");
-                            Program.SetExtractLog("InsertNew", "status='E0', remark='Old PID [" + oldpid + "] still running!'");
+                            Log.Print("Stopping this RunID due to other still running ProcessID [" + oldpid + "]");
+                            Program.SetExtractLog("InsertNew", "status='E0', remark='Stopping this RunID due to other still running ProcessID [" + oldpid + "]'");
                             Program.Exit(8);
                         }
                     }
@@ -223,7 +225,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error checking for running extractions: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error checking for running extractions'");
+                Program.SetExtractLog("Update", "status='E'+status, remark='Error checking for running extractions: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(9);
             }
         }
@@ -233,16 +235,16 @@ namespace SAPExtractor
             try
             {
                 Log.Print("Preparing extraction");
-                //Deleting Temp-Table
                 DB.Execute("dwh", "begin try drop table " + Data.temptable + " end try begin catch end catch");
 
-                //Create Temp-Table according to defined Fieldtypes, only Dates are stored as VarChar.
                 sql = "create table " + Data.temptable + "(";
                 for (int i = 0; i < Data.field_types.Count; i++)
                 {
-                    if (Data.field_types[i].ToLower().Contains("date")) sql += " [" + Data.field_names[i] + "] varchar(14) collate Latin1_General_CS_AS,";
-                    else if (Data.field_types[i].ToLower().Contains("varchar")) sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + " collate Latin1_General_CS_AS,";
-                    else sql += " [" + Data.field_names[i] + "] " + Data.field_types[i] + ",";
+                    sql += " [" + Data.field_names[i] + "]";
+                    if (Data.field_types[i].ToLower().Contains("date")) sql += " varchar(14)";
+                    else sql += " " + Data.field_types[i];
+                    if (Data.field_types[i].ToLower().Contains("varchar") && Data.field_collations[i] != null) sql += " collate " + Data.field_collations[i] + ",";
+                    else sql += ",";
                 }
                 sql = sql.Trim(',') + ")";
                 DB.Execute("dwh", sql);
@@ -255,7 +257,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error preparing extraction: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error preparing extraction'");
+                Program.SetExtractLog("Update", "status='E'+status, remark='Error preparing extraction: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(10);
             }
         }
@@ -311,7 +313,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error querying parameters: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error querying parameters'");
+                Program.SetExtractLog("Update", "status='E'+status, remark='Error querying parameters: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(11);
             }
         }
@@ -339,7 +341,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error extracting data: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error extracting data'");
+                Program.SetExtractLog("Update", "status='E'+status, remark='Error extracting data: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(12);
             }
         }
@@ -366,7 +368,7 @@ namespace SAPExtractor
                         for (int i = 0; i < Data.field_types.Count; i++)
                         {
                             sql += " [" + Data.field_names[i] + "] " + Data.field_types[i];
-                            if (Data.field_types[i].ToLower().Contains("varchar")) sql += " collate Latin1_General_CS_AS";
+                            if (Data.field_types[i].ToLower().Contains("varchar") && Data.field_collations[i] != null) sql += " collate Latin1_General_CS_AS";
                             if (pk.Contains("," + Data.field_names[i].ToLower() + ",")) sql += " not null";
                             sql += ",";
                         }
@@ -442,7 +444,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error transforming data: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error transforming data'");
+                Program.SetExtractLog("Update", "status='E'+status, remark='Error transforming data: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(13);
             }
         }
@@ -464,7 +466,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error executing finalization: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error executing finalization'");
+                Program.SetExtractLog("Update", "status='E'+status, remark='Error executing finalization: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(14);
             }
         }
@@ -480,7 +482,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error cleaning up workspace: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error during cleanup'");
+                Program.SetExtractLog("Update", "status='E'+status, remark='Error cleaning up workspace: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(15);
             }
         }
