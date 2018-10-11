@@ -215,7 +215,7 @@ namespace SAPExtractor
                         if (proc[i].Id.ToString() == oldpid && proc[i].ProcessName == System.Diagnostics.Process.GetCurrentProcess().ProcessName)
                         {
                             Log.Print("Stopping this RunID due to other still running ProcessID [" + oldpid + "]");
-                            Program.SetExtractLog("InsertNew", "status='E0', remark='Stopping this RunID due to other still running ProcessID [" + oldpid + "]'");
+                            Program.SetExtractLog("InsertNew", "status='E0', enddate=getdate(), remark='Stopping this RunID due to other still running ProcessID [" + oldpid + "]'");
                             Program.Exit(8);
                         }
                     }
@@ -225,7 +225,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error checking for running extractions: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error checking for running extractions: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
+                Program.SetExtractLog("Update", "status='E'+status, enddate=getdate(), remark='Error checking for running extractions: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(9);
             }
         }
@@ -257,7 +257,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error preparing extraction: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error preparing extraction: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
+                Program.SetExtractLog("Update", "status='E'+status, enddate=getdate(), remark='Error preparing extraction: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(10);
             }
         }
@@ -313,7 +313,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error querying parameters: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error querying parameters: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
+                Program.SetExtractLog("Update", "status='E'+status, enddate=getdate(), remark='Error querying parameters: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(11);
             }
         }
@@ -341,7 +341,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error extracting data: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error extracting data: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
+                Program.SetExtractLog("Update", "status='E'+status, enddate=getdate(), remark='Error extracting data: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(12);
             }
         }
@@ -444,7 +444,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error transforming data: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error transforming data: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
+                Program.SetExtractLog("Update", "status='E'+status, enddate=getdate(), remark='Error transforming data: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(13);
             }
         }
@@ -466,7 +466,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error executing finalization: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error executing finalization: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
+                Program.SetExtractLog("Update", "status='E'+status, enddate=getdate(), remark='Error executing finalization: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(14);
             }
         }
@@ -482,7 +482,7 @@ namespace SAPExtractor
             catch (Exception expt)
             {
                 Log.Print("Error cleaning up workspace: " + expt.Message);
-                Program.SetExtractLog("Update", "status='E'+status, remark='Error cleaning up workspace: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
+                Program.SetExtractLog("Update", "status='E'+status, enddate=getdate(), remark='Error cleaning up workspace: " + Log.Trunc(expt.Message.Replace("'", "''"), 1950) + "'");
                 Program.Exit(15);
             }
         }
@@ -493,7 +493,7 @@ namespace SAPExtractor
                 //Set old unfinished RunIDs on C%
                 if (mode == "CancelOld") DB.Execute("dwh", "update [" + Data.dwh_dbname + "].[" + Data.dwh_schema + "].[SAPExtractor_log] set status = 'C'+status where substring(status,1,1) not in ('C','E','9') and profile = '" + Data.profile + "';");
                 //Insert new RunID
-                if (mode == "InsertNew" || mode == "CancelOld") DB.Execute("dwh", "insert into [" + Data.dwh_dbname + "].[" + Data.dwh_schema + "].[SAPExtractor_log] (profile, runid, startdate, status, processid, configmd5, profilemd5, appversion) values ('" + Data.profile + "','" + Data.runid + "',convert(datetime,'" + Program.startdate.ToString("yyyy-MM-dd HH:mm:ss") + "',121),'0'," + Program.pid + ",'" + Data.md5_config + "','" + Data.md5_profile + "','" + Program.version + "');");
+                if (mode == "InsertNew" || mode == "CancelOld") DB.Execute("dwh", "insert into [" + Data.dwh_dbname + "].[" + Data.dwh_schema + "].[SAPExtractor_log] (profile, runid, startdate, status, processid, configmd5, profilemd5, appversion, insertmode) values ('" + Data.profile + "','" + Data.runid + "',convert(datetime,'" + Program.startdate.ToString("yyyy-MM-dd HH:mm:ss") + "',121),'0'," + Program.pid + ",'" + Data.md5_config + "','" + Data.md5_profile + "','" + Program.version + "','" + Data.dwh_insertmode + "');");
                 //Update current RunID
                 if (text.Length > 0) DB.Execute("dwh", "update [" + Data.dwh_dbname + "].[" + Data.dwh_schema + "].[SAPExtractor_log] set " + text + " where profile = '" + Data.profile + "' and runid = '" + Data.runid + "';");
             }
