@@ -1,6 +1,7 @@
 <config>
   <program>
     <batchsize>100000</batchsize>
+    <linesize>40</linesize>
   </program>
   <sap>
     <host>sasapegl001</host>

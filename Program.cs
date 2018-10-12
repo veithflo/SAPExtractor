@@ -29,7 +29,7 @@ namespace SAPExtractor
 
     static class Data
     {
-        public static int batchsize;
+        public static int batchsize, linesize;
         public static string profile, runid, md5_config, md5_profile;
         public static string sap_host, sap_port, sap_dbname, sap_schema, sap_username, sap_password, sap_query, sap_nullable;
         public static string dwh_host, dwh_port, dwh_dbname, dwh_schema, dwh_username, dwh_password, dwh_table, dwh_insertmode, dwh_finalization;
@@ -120,6 +120,7 @@ namespace SAPExtractor
                 Data.dwh_username = xml.GetValue("/config/dwh/username");
                 Data.dwh_password = xml.GetValue("/config/dwh/password");
                 Data.batchsize = Convert.ToInt32(xml.GetValue("/config/program/batchsize"));
+                Data.linesize = Convert.ToInt32(xml.GetValue("/config/program/linesize"));
                 Program.Exit(0);
             }
             catch (Exception expt)
@@ -873,8 +874,10 @@ namespace SAPExtractor
             Console.WriteLine(output);
             if (logstream != null) logstream.WriteLine(output);
         }
-        public static string Trunc(string text, int length = 40)
+        public static string Trunc(string text, int length = -1)
         {
+            if (length < 0) length = Math.Abs(Data.linesize);
+            if (length == 0) length = 9999;
             if (text.Trim().Length > length) return text.Trim().Substring(0, length).Trim() + "...";
             return text;
         }
